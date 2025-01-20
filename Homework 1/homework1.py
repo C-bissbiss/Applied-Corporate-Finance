@@ -3,15 +3,16 @@ import scipy as sp
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import warnings
+
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 # Load the data
 data = pd.read_csv('Homework 1/dataHW1.csv')
 
 # Check if there are any duplicates
 print(sum(data.duplicated()))
-
-# Check if there are any missing values
-print(data.isnull().sum())
 
 # Drop duplicates
 data = data.drop_duplicates()
@@ -104,4 +105,26 @@ data['ebitint'] = data['ebit'] / data['xint']
 data['cash'] = data['che'] / data['at']
 data['profitability'] = data['oibdp'] / data['at']
 
-print(data.head())
+
+print(data.isnull().sum())  # Count of NaN values
+
+
+# Winsorize financial ratios (1st and 99th percentile) in each fiscal year
+financial_ratios = [
+    'bookleverage1', 'bookleverage2', 'marketleverage', 'markettonook', 'assetgrowth',
+    'assettangibility', 'roe', 'profitmargin', 'capexratio', 'dividendyield',
+    'dividendpayout', 'totalpayout', 'ebitint', 'cash', 'profitability'
+]
+
+# Apply winsorization within each fiscal year for all financial ratios
+for ratio in financial_ratios:
+    data[ratio] = data.groupby('fyear')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
+
+### Remove rows with infinite values??? ###
+data.replace([np.inf, -np.inf], np.nan, inplace=True)
+data.dropna(inplace=True)
+
+summary_stats = data[financial_ratios].agg(['mean', 'median', 'min', 'max', 'std', 'count']).T
+summary_stats.columns = ['Mean', 'Median', 'Min', 'Max', 'StdDev', 'Non-Missing Count']
+print(summary_stats)
+
