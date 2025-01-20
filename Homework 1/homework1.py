@@ -6,9 +6,11 @@ import seaborn as sns
 import warnings
 
 
+### 1) Understanding data issues ###
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-# Load the data
+# 1.1) Load the data
 data = pd.read_csv('Homework 1/dataHW1.csv')
 
 # Check if there are any duplicates
@@ -78,9 +80,6 @@ plt.show()
 # save graph as png
 plt.savefig('Number of companies over time.png')
 
-
-
-
 # Define a function to winsorize data
 def winsorize(series, lower=0.01, upper=0.99):
     lower_bound = series.quantile(lower)
@@ -116,11 +115,11 @@ financial_ratios = [
     'dividendpayout', 'totalpayout', 'ebitint', 'cash', 'profitability'
 ]
 
-# Apply winsorization within each fiscal year for all financial ratios
+# 1.2) Apply winsorization within each fiscal year for all financial ratios
 for ratio in financial_ratios:
     data[ratio] = data.groupby('fyear')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
 
-### Remove rows with infinite values??? ###
+# Remove rows with infinite values
 data.replace([np.inf, -np.inf], np.nan, inplace=True)
 data.dropna(inplace=True)
 
@@ -128,3 +127,8 @@ summary_stats = data[financial_ratios].agg(['mean', 'median', 'min', 'max', 'std
 summary_stats.columns = ['Mean', 'Median', 'Min', 'Max', 'StdDev', 'Non-Missing Count']
 print(summary_stats)
 
+# 1.3) Split the firms into 4 quartiles based on the market value of equity
+data['market_value_quartile'] = data.groupby('fyear')['marketvalueofequity'].transform(lambda x: pd.qcut(x, 4, labels=False))
+
+# Summary statistics for the firms in the smallest and larget quartiles with mean, median, and standard deviation for each two subsamples
+quartile_stats = data.groupby(['fyear', 'market_value_quartile'])[financial_ratios].agg(['mean', 'median', 'std']) # first and 4th quartile to be coded
