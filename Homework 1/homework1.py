@@ -1,8 +1,7 @@
 import pandas as pd
-import scipy as sp
+import statsmodels.api as sm
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import warnings
 from pandas.plotting import scatter_matrix
 
@@ -335,9 +334,187 @@ correlation_matrix22a = selected_data.corr()
 # Save the table as a CSV
 correlation_matrix22a.to_csv('Correlation_Matrix22a.csv')
 
-# Tranform each of the selected financial ratios by removing the firm-specific mean and create a new correlation matrix
-selected_data_centered = selected_data.sub(selected_data.mean())
+# Center each variable by removing firm-specific mean
+selected_data_centered = selected_data.sub(selected_data.mean(axis=0))
+
+# Calculate correlation matrix
 correlation_matrix_centered = selected_data_centered.corr()
+correlation_matrix_centered.to_csv('Correlation_Matrix_Centered22b.csv')
+
 # Save the table as a CSV
 correlation_matrix_centered.to_csv('Correlation_Matrix_Centered22b.csv')
 
+
+# 2.3) a) Estimate the model using OLS, y_it=a+β_1x_it+ε_it
+# Load data (ensure 'bookleverage1' and 'profitability' are available columns)
+data = non_financial_non_utility_firms  # Subset as before
+
+# Define dependent and independent variables for Model 1
+y = data['bookleverage1']  # Book leverage
+x = data['profitability']  # Profitability
+x = sm.add_constant(x)  # Add a constant term for the intercept
+
+# Model 1: OLS estimation
+model1 = sm.OLS(y, x).fit()
+
+# Model 1 with robust standard errors
+model1_robust = sm.OLS(y, x).fit(cov_type='HC1')  # Heteroskedasticity-robust errors
+
+# Print results for Model 1
+# Extract the regression summary table as a DataFrame
+ols_results = model1.summary2().tables[1]
+
+# Save the OLS results to a CSV file
+ols_results.to_csv("ols_results23a.csv", index=True)
+
+# Extract the regression summary table as a DataFrame
+ols_results = model1_robust.summary2().tables[1]
+# Save the OLS results to a CSV file
+ols_results.to_csv("ols_results_23a_robust.csv", index=True)
+
+
+
+# 2.3) b) Estimate the model using OLS, y_it=a+β_1x_it+ε_it with de-meaned variables
+data['demeaned_y'] = data['bookleverage1'] - data.groupby('gvkey')['bookleverage1'].transform('mean')
+data['demeaned_x'] = data['profitability'] - data.groupby('gvkey')['profitability'].transform('mean')
+
+y_demeaned = data['demeaned_y']
+x_demeaned = sm.add_constant(data['demeaned_x'])
+
+# Model 2: OLS estimation with de-meaned variables
+model2 = sm.OLS(y_demeaned, x_demeaned).fit()
+
+# Model 2 with robust standard errors
+model2_robust = sm.OLS(y_demeaned, x_demeaned).fit(cov_type='HC1')  # Heteroskedasticity-robust errors
+
+# Extract the regression summary table as a DataFrame
+ols_results = model2.summary2().tables[1]
+# Save the OLS results to a CSV file
+ols_results.to_csv("ols_results_23b.csv", index=True)
+
+# Extract the regression summary table as a DataFrame
+ols_results = model2_robust.summary2().tables[1]
+# Save the OLS results to a CSV file
+ols_results.to_csv("ols_results_23b_robust.csv", index=True)
+
+
+# 2.3) c) Estimate the model using OLS, y_it-y_it-1=a+β_1(x_it-x_it-1)+ε_it
+# Calculate first differences
+data['Δy'] = data['bookleverage1'] - data['bookleverage1'].shift(1)
+data['Δx'] = data['profitability'] - data['profitability'].shift(1)
+
+# Drop missing values due to lagged computation
+diff_data = data.dropna(subset=['Δy', 'Δx'])
+
+# Define dependent and independent variables
+y_diff = diff_data['Δy']
+x_diff = sm.add_constant(diff_data['Δx'])
+
+# OLS regression on first-difference model
+diff_model = sm.OLS(y_diff, x_diff).fit()
+
+# OLS regression on first-difference model (robust standard errors)
+diff_model_robust = sm.OLS(y_diff, x_diff).fit(cov_type='HC1')
+
+# Save results
+diff_model.summary2().tables[1].to_csv("ols_diff23c.csv")
+diff_model_robust.summary2().tables[1].to_csv("ols_diff23c_robust.csv")
+
+# 2.3) d) Perform firm-by-firm regression for each group
+# Initialize list to store firm-specific results
+firm_results = []
+
+# Filter for firms with at least 10 observations
+filtered_data = data.groupby('gvkey').filter(lambda x: len(x) >= 10)
+
+# Group by firm (gvkey)
+for gvkey, group in filtered_data.groupby('gvkey'):
+    y_firm = group['bookleverage1']
+    x_firm = sm.add_constant(group['profitability'])
+    
+    # Estimate OLS for the firm
+    try:
+        firm_model = sm.OLS(y_firm, x_firm).fit()
+        firm_results.append({'gvkey': gvkey, 'beta': firm_model.params[1]})  # Extract β_i
+    except Exception as e:
+        print(f"Error with firm {gvkey}: {e}")
+
+# Convert results to DataFrame
+firm_results_df = pd.DataFrame(firm_results)
+
+# Plot histogram of β_i
+plt.hist(firm_results_df['beta'], bins=20, edgecolor='black')
+plt.title("Histogram of Firm-Specific β_i Estimates")
+plt.xlabel("β_i")
+plt.ylabel("Frequency")
+plt.savefig("firm_beta_histogram_partd.png")
+# save graph as png
+plt.savefig('Firmbyfirm23c.png')
+
+# Summary statistics for β_i
+summary_stats = firm_results_df['beta'].describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
+
+# Save summary table
+summary_stats.to_csv("Firmbyfirm23c.csv")
+
+
+# 2.4) d) Grouping firms by market value
+# Divide firms into quartiles based on market value
+data['market_value_quartile'] = pd.qcut(data['marketvalueofequity'], 4, labels=[1, 2, 3, 4])
+
+group_results = []
+group_results_robust = []
+
+# Perform firm-by-firm regression for each group
+for quartile in range(1, 5):
+    quartile_data = data[data['market_value_quartile'] == quartile]
+    quartile_firm_results = []
+    
+    for gvkey, group in quartile_data.groupby('gvkey'):
+        if len(group) >= 10:
+            y_firm = group['bookleverage1']
+            x_firm = sm.add_constant(group['profitability'])
+            
+            try:
+                firm_model = sm.OLS(y_firm, x_firm).fit()
+                quartile_firm_results.append(firm_model.params[1])  # β_i
+            except Exception as e:
+                print(f"Error with firm {gvkey}: {e}")
+    
+    # Summary statistics for each quartile
+    quartile_results = pd.Series(quartile_firm_results).describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
+    quartile_results['quartile'] = quartile
+    group_results.append(quartile_results)
+
+# Combine results for all quartiles
+group_results_df = pd.DataFrame(group_results)
+
+# Save results
+group_results_df.to_csv("quartile_beta23e.csv", index=False)
+
+# Perform firm-by-firm regression for each group with robust standard errors
+for quartile in range(1, 5):
+    quartile_data = data[data['market_value_quartile'] == quartile]
+    quartile_firm_results = []
+    
+    for gvkey, group in quartile_data.groupby('gvkey'):
+        if len(group) >= 10:
+            y_firm = group['bookleverage1']
+            x_firm = sm.add_constant(group['profitability'])
+            
+            try:
+                firm_model = sm.OLS(y_firm, x_firm).fit(cov_type='HC1')  # Robust standard errors
+                quartile_firm_results.append(firm_model.params[1])  # β_i
+            except Exception as e:
+                print(f"Error with firm {gvkey}: {e}")
+    
+    # Summary statistics for each quartile
+    quartile_results = pd.Series(quartile_firm_results).describe().iloc[[1, 5, 3, 7]].rename({'50%': 'median'})
+    quartile_results['quartile'] = quartile
+    group_results_robust.append(quartile_results)
+
+# Combine results for all quartiles
+group_results_df_robust = pd.DataFrame(group_results_robust)
+
+# Save results
+group_results_df_robust.to_csv("quartile_beta23e_robust.csv", index=False)
