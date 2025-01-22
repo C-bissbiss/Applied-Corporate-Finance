@@ -480,42 +480,60 @@ diff_model.summary2().tables[1].to_csv("ols_diff23c.csv")
 diff_model_robust.summary2().tables[1].to_csv("ols_diff23c_robust.csv")
 
 # 2.3) d) Perform firm-by-firm regression for each group
-# Initialize list to store firm-specific results
+# Initialize lists to store results
 firm_results = []
+firm_results_robust = []
 
-# Filter for firms with at least 10 observations
-filtered_data = data.groupby('gvkey').filter(lambda x: len(x) >= 10)
+# Perform firm-by-firm regression for each group if the firm has at least 10 non-missing observations
+for gvkey, group in data.groupby('gvkey'):
+    # Check for at least 10 non-missing observations
+    if group['bookleverage1'].notnull().sum() >= 10:
+        y_firm = group['bookleverage1'].dropna()
+        x_firm = sm.add_constant(group['profitability'].loc[y_firm.index])  # Align x and y indices
 
-# Group by firm (gvkey)
-for gvkey, group in filtered_data.groupby('gvkey'):
-    y_firm = group['bookleverage1']
-    x_firm = sm.add_constant(group['profitability'])
-    
-    # Estimate OLS for the firm
-    try:
-        firm_model = sm.OLS(y_firm, x_firm).fit()
-        firm_results.append({'gvkey': gvkey, 'beta': firm_model.params[1]})  # Extract β_i
-    except Exception as e:
-        print(f"Error with firm {gvkey}: {e}")
+        # Perform regular OLS regression
+        try:
+            firm_model = sm.OLS(y_firm, x_firm).fit()
+            firm_results.append(firm_model.params[1])  # β_i
+        except Exception as e:
+            print(f"Error with firm {gvkey} in OLS regression: {e}")
 
-# Convert results to DataFrame
-firm_results_df = pd.DataFrame(firm_results)
-
-# Plot histogram of β_i
-plt.hist(firm_results_df['beta'], bins=20, edgecolor='black')
-plt.title("Histogram of Firm-Specific β_i Estimates")
-plt.xlabel("β_i")
-plt.ylabel("Frequency")
-
-# Save plot
-plt.savefig("beta_histogram23d.png")
-
+        # Perform OLS regression with robust standard errors
+        try:
+            firm_model_robust = sm.OLS(y_firm, x_firm).fit(cov_type='HC1')  # Robust standard errors
+            firm_results_robust.append(firm_model_robust.params[1])  # β_i
+        except Exception as e:
+            print(f"Error with firm {gvkey} in robust regression: {e}")
 
 # Summary statistics for β_i
-summary_stats = firm_results_df['beta'].describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
+firm_results_df = pd.Series(firm_results).describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
+firm_results_df.to_csv("beta23d.csv")
 
-# Save summary table
-summary_stats.to_csv("beta_histogram23d.csv")
+# Summary statistics for β_i with robust standard errors
+firm_results_df_robust = pd.Series(firm_results_robust).describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
+firm_results_df_robust.to_csv("beta23d_robust.csv")
+
+# Histogram of β_i
+plt.figure(figsize=(10, 6))
+plt.hist(firm_results, bins=30, color='darkblue', edgecolor='black', alpha=0.7)
+plt.title('Histogram of Firm-Specific Coefficients (β_i)', fontsize=14, fontweight='bold')
+plt.xlabel('Firm-Specific Coefficients (β_i)', fontsize=12)
+plt.ylabel('Frequency', fontsize=12)
+plt.grid(axis='y', linestyle='--', linewidth=0.7)
+plt.tight_layout()
+plt.savefig('Coefficients23d.png')
+plt.close()
+
+# Histogram of β_i with robust standard errors
+plt.figure(figsize=(10, 6))
+plt.hist(firm_results_robust, bins=30, color='darkblue', edgecolor='black', alpha=0.7)
+plt.title('Histogram of Firm-Specific Coefficients (β_i) with Robust Standard Errors', fontsize=14, fontweight='bold')
+plt.xlabel('Firm-Specific Coefficients (β_i)', fontsize=12)
+plt.ylabel('Frequency', fontsize=12)
+plt.grid(axis='y', linestyle='--', linewidth=0.7)
+plt.tight_layout()
+plt.savefig('Coefficients_with_Robust_Standard_Errors23d.png')
+plt.close()
 
 
 # 2.4) e) Grouping firms by market value
