@@ -137,7 +137,7 @@ financial_ratios = [
 ]
 
 for ratio in financial_ratios:
-    data[ratio] = data.groupby('fyear')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
+    data[ratio] = data.groupby('gvkey')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
 
 # Remove rows with infinite values
 data.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -401,8 +401,6 @@ selected_data_centered = selected_data.sub(selected_data.mean(axis=0))
 correlation_matrix_centered = selected_data_centered.corr()
 correlation_matrix_centered.to_csv('Correlation_Matrix_Centered22b.csv')
 
-# Save the table as a CSV
-correlation_matrix_centered.to_csv('Correlation_Matrix_Centered22b.csv')
 
 
 # 2.3) a) Estimate the model using OLS, y_it=a+β_1x_it+ε_it
