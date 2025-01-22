@@ -10,6 +10,7 @@ from pandas.plotting import scatter_matrix
 
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # 1.1) Load the data
 data = pd.read_csv('Homework 1/dataHW1.csv')
@@ -479,6 +480,7 @@ diff_model_robust = sm.OLS(y_diff, x_diff).fit(cov_type='HC1')
 diff_model.summary2().tables[1].to_csv("ols_diff23c.csv")
 diff_model_robust.summary2().tables[1].to_csv("ols_diff23c_robust.csv")
 
+
 # 2.3) d) Perform firm-by-firm regression for each group
 # Initialize lists to store results
 firm_results = []
@@ -517,8 +519,8 @@ firm_results_df_robust.to_csv("beta23d_robust.csv")
 plt.figure(figsize=(10, 6))
 plt.hist(firm_results, bins=30, color='darkblue', edgecolor='black', alpha=0.7)
 plt.title('Histogram of Firm-Specific Coefficients (β_i)', fontsize=14, fontweight='bold')
-plt.xlabel('Firm-Specific Coefficients (β_i)', fontsize=12)
-plt.ylabel('Frequency', fontsize=12)
+plt.xlabel('Firm-Specific Coefficients (β_i)', fontweight='bold', fontsize=12, labelpad=10)
+plt.ylabel('Frequency', fontsize=12, fontweight='bold', labelpad=10)
 plt.grid(axis='y', linestyle='--', linewidth=0.7)
 plt.tight_layout()
 plt.savefig('Coefficients23d.png')
@@ -528,8 +530,8 @@ plt.close()
 plt.figure(figsize=(10, 6))
 plt.hist(firm_results_robust, bins=30, color='darkblue', edgecolor='black', alpha=0.7)
 plt.title('Histogram of Firm-Specific Coefficients (β_i) with Robust Standard Errors', fontsize=14, fontweight='bold')
-plt.xlabel('Firm-Specific Coefficients (β_i)', fontsize=12)
-plt.ylabel('Frequency', fontsize=12)
+plt.xlabel('Firm-Specific Coefficients (β_i)', fontweight='bold', fontsize=12, labelpad=10)
+plt.ylabel('Frequency', fontsize=12, fontweight='bold', labelpad=10)
 plt.grid(axis='y', linestyle='--', linewidth=0.7)
 plt.tight_layout()
 plt.savefig('Coefficients_with_Robust_Standard_Errors23d.png')
