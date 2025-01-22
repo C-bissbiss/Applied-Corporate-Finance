@@ -152,7 +152,8 @@ print(summary_stats12)
 # Save the table as a CSV
 summary_stats12.to_csv('Winsorized_Statistics12.csv')
 
-### 1.3) Split the firms into 4 quartiles based on the market value of equity ###
+
+# 1.3) Split the firms into 4 quartiles based on the market value of equity
 data['market_value_quartile'] = data.groupby('fyear')['marketvalueofequity'].transform(
     lambda x: pd.qcut(x, 4, labels=False)
 )
