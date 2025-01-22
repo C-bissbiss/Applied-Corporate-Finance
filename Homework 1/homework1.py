@@ -71,12 +71,29 @@ print(data.count())
 # print descriptive statistics
 print(data.describe())
 
-# Plot the evolution in the number of companies over time
-data.groupby('fyear')['gvkey'].nunique().plot()
-plt.xlabel('Year')
-plt.ylabel('Number of companies')
-plt.title('Number of companies over time')
-plt.show()
+# Group the data and plot
+fig, ax = plt.subplots(figsize=(10, 6))  # Adjust the figure size
+data.groupby('fyear')['gvkey'].nunique().plot(
+    ax=ax, 
+    color='darkblue', 
+    linewidth=2, 
+    marker='o', 
+    markersize=6, 
+    linestyle='-'
+)
+
+# Adding labels, title, and grid
+ax.set_xlabel('Fiscal Year', fontsize=12, labelpad=10, fontweight='bold')
+ax.set_ylabel('Number of Companies', fontsize=12, labelpad=10, fontweight='bold')
+ax.set_title('Number of Companies Over Time', fontsize=14, fontweight='bold', pad=15)
+ax.grid(visible=True, which='major', linestyle='--', linewidth=0.7, alpha=0.7)
+
+# Customize ticks
+ax.tick_params(axis='x', labelsize=10, rotation=45) 
+ax.tick_params(axis='both', labelsize=10)
+ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))  # Ensure integer ticks on the x-axis
+# Save and show the styled plot
+plt.tight_layout()
 
 # save graph as png
 plt.savefig('Number of companies over time11.png')
@@ -181,17 +198,36 @@ print(utility_counts14)
 # Save the table as a CSV
 utility_counts14.to_csv('Industries_Statistics14.csv')
 
-# Visualize the trend in financial vs non-financial firms over time
-financial_counts.plot(kind='bar', figsize=(12, 6))
-plt.title('Number of Financial vs Non-Financial Firms Over Time')
-plt.xlabel('Fiscal Year')
-plt.ylabel('Number of Firms')
-plt.legend(title='Firm Type')
-# Update the x-axis tick labels to remove decimal points
-plt.xticks(ticks=plt.xticks()[0], labels=financial_counts.index.astype(int))
+# Plot the data
+fig, ax = plt.subplots(figsize=(12, 6))  # Set figure size
+financial_counts.plot(
+    kind='bar', 
+    ax=ax, 
+    color=['darkblue', '#ff7f0e'],  # Custom colors for financial and non-financial firms
+    edgecolor='black',  # Add edges to bars for better distinction
+    width=0.8  # Adjust bar width
+)
+
+# Title and labels
+ax.set_title('Number of Financial vs Non-Financial Firms Over Time', fontsize=16, fontweight='bold', pad=15)
+ax.set_xlabel('Fiscal Year', fontsize=14, fontweight='bold', labelpad=10)
+ax.set_ylabel('Number of Firms', fontsize=14, fontweight='bold',  labelpad=10)
+
+# Legend
+ax.legend(title='Firm Type', fontsize=12, title_fontsize=12)
+
+# Customize ticks
+ax.tick_params(axis='both', which='major', labelsize=12)
+ax.set_xticks(range(len(financial_counts.index)))  # Ensure proper alignment of ticks
+ax.set_xticklabels(financial_counts.index.astype(int), rotation=45, ha='right')  # Rotate labels for readability
+
+# Gridlines
+ax.grid(visible=True, axis='y', linestyle='--', linewidth=0.7, alpha=0.7)
+
+# Tight layout for spacing and save the plot
 plt.tight_layout()
-# save graph as png
-plt.savefig('Number of Financial vs Non-Financial Firms Over Time14.png')
+plt.savefig('Number_of_Financial_vs_Non-Financial_Firms_Over_Time14.png')
+plt.show()
 
 ### 1.5) Using the book leverages and market leverage, create descritive statistics for the subset of firms ###
 # Define subsets
