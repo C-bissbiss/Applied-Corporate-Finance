@@ -288,23 +288,32 @@ financial_ratios = ['bookleverage1', 'ebitint', 'cash', 'profitability', 'totalp
 # Subset the data for the selected financial ratios
 selected_data = non_financial_non_utility_firms[financial_ratios]
 
-# Create a histogram-scatter matrix
+# Create a styled histogram-scatter matrix
+fig, axes = plt.subplots(figsize=(12, 12))
 scatter_matrix(
     selected_data,
     figsize=(12, 12),
     diagonal="hist",  # Display histograms on the diagonal
     alpha=0.7,  # Transparency for scatter points
     grid=True,  # Enable grid
+    color='darkblue',  # Use consistent color
+    hist_kwds={'color': 'darkblue', 'edgecolor': 'black', 'alpha': 0.7},  # Style histograms
+    marker='o',  # Marker style for scatter
 )
 
-# Adjust layout and show the plot
-plt.suptitle("Histogram-Scatter Matrix for Selected Financial Ratios (Winsorized Sample)", fontsize=14)
+# Add a title and adjust the layout
+plt.suptitle(
+    "Histogram-Scatter Matrix for Selected Financial Ratios (Winsorized Sample)",
+    fontsize=14,
+    fontweight='bold',
+    y=0.98  # Adjust vertical position of the title
+)
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Avoid overlap with the title
 # save graph as png
 plt.savefig('Histogram-scatter21a.png')
 
 
-# 2.1) a) Time-series graph of average and aggregate values of the six financial ratios
+# 2.1) b) Time-series graph of average and aggregate values of the six financial ratios
 # Subset the data for non-financial and non-utility firms
 non_financial_non_utility_firms = data[~data['is_financial'] & ~data['is_utility']]
 
@@ -334,7 +343,7 @@ df = non_financial_non_utility_firms.copy()
 
 # Loop through each ratio and calculate average and aggregate values over time
 for idx, (ratio, (numerator, denominator)) in enumerate(ratios_components.items()):
-    # Ensure explicit use of .loc to avoid warnings
+    # Calculate numerator and denominator using eval
     df.loc[:, numerator] = df.eval(numerator)
     df.loc[:, denominator] = df.eval(denominator)
 
@@ -347,15 +356,29 @@ for idx, (ratio, (numerator, denominator)) in enumerate(ratios_components.items(
         df.groupby('fyear')[denominator].sum()
     )
 
-    # Plot on the corresponding axis
+    # Plot the data
     ax = axes[idx]
-    ax.plot(average_values.index, average_values, label='Average')
-    ax.plot(aggregate_values.index, aggregate_values, label='Aggregate')
-    ax.set_title(f'Time Series for {ratio}')
-    ax.set_xlabel('Fiscal Year')
-    ax.set_ylabel(ratio)
-    ax.legend()
-    ax.grid()
+    ax.plot(
+        average_values.index,
+        average_values,
+        label='Average',
+        color='darkblue',
+        linewidth=2
+    )
+    ax.plot(
+        aggregate_values.index,
+        aggregate_values,
+        label='Aggregate',
+        color='darkorange',
+        linewidth=2,
+        linestyle='--'
+    )
+    ax.set_title(f'Time Series for {ratio}', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Fiscal Year', fontsize=12)
+    ax.set_ylabel(ratio, fontsize=12)
+    ax.legend(fontsize=10, title='Legend', title_fontsize=10)
+    ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.tick_params(axis='x', rotation=45)  # Rotate x-axis labels
 
 # Adjust layout to prevent overlap
 plt.tight_layout()
@@ -485,16 +508,16 @@ plt.xlabel("β_i")
 plt.ylabel("Frequency")
 plt.savefig("firm_beta_histogram_partd.png")
 # save graph as png
-plt.savefig('Firmbyfirm23c.png')
+plt.savefig('Firmbyfirm23d.png')
 
 # Summary statistics for β_i
 summary_stats = firm_results_df['beta'].describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
 
 # Save summary table
-summary_stats.to_csv("Firmbyfirm23c.csv")
+summary_stats.to_csv("Firmbyfirm23d.csv")
 
 
-# 2.4) d) Grouping firms by market value
+# 2.4) e) Grouping firms by market value
 # Divide firms into quartiles based on market value
 data['market_value_quartile'] = pd.qcut(data['marketvalueofequity'], 4, labels=[1, 2, 3, 4])
 
