@@ -506,15 +506,14 @@ plt.hist(firm_results_df['beta'], bins=20, edgecolor='black')
 plt.title("Histogram of Firm-Specific β_i Estimates")
 plt.xlabel("β_i")
 plt.ylabel("Frequency")
-plt.savefig("firm_beta_histogram_partd.png")
-# save graph as png
-plt.savefig('Firmbyfirm23d.png')
+plt.savefig("firm_beta_histogram23d.png")
+
 
 # Summary statistics for β_i
 summary_stats = firm_results_df['beta'].describe().loc[['mean', '50%', 'min', 'max']].rename({'50%': 'median'})
 
 # Save summary table
-summary_stats.to_csv("Firmbyfirm23d.csv")
+summary_stats.to_csv("firm_beta_histogram23d.csv")
 
 
 # 2.4) e) Grouping firms by market value
