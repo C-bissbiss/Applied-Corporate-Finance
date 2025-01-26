@@ -21,9 +21,6 @@ print(sum(data.duplicated()))
 # Drop duplicates
 data = data.drop_duplicates()
 
-# Drop missing values PROBLEM HERE (should i drop all rows with missing values?)
-data = data.dropna()
-
 # Check if there are any missing values
 print(data.isnull().sum())
 
@@ -51,14 +48,11 @@ data = data.sort_values(by=['gvkey', 'fyear']).reset_index(drop=True)
 # Create the lagged price column by shifting 'prcc_f' backward by one row (fyear+1 to fyear)
 data['lprice'] = data.groupby('gvkey')['prcc_f'].shift(-1)
 
-# drop the rows where lprice is missing
-data = data.dropna(subset=['lprice'])
-
 # Create the lagged total assets column by shifting 'at' backward by one row (fyear+1 to fyear)
 data['lat'] = data.groupby('gvkey')['at'].shift(-1)
 
-# drop the rows where lat is missing
-data = data.dropna(subset=['lat'])
+# drop the rows where lprice is missing (also drops for lat)
+data = data.dropna(subset=['lprice'])
 
 # drop indfmt, consol, popsrc, datafmt, costat, and datadate
 data = data.drop(['indfmt', 'consol', 'popsrc', 'datafmt', 'costat', 'datadate'], axis=1)
@@ -85,7 +79,7 @@ data.groupby('fyear')['gvkey'].nunique().plot(
 
 # Adding labels, title, and grid
 ax.set_xlabel('Fiscal Year', fontsize=12, labelpad=10, fontweight='bold')
-ax.set_ylabel('Number of Companies', fontsize=12, labelpad=10, fontweight='bold')
+ax.set_ylabel('Number of U.S.-based Companies', fontsize=12, labelpad=10, fontweight='bold')
 ax.set_title('Number of Companies Over Time', fontsize=14, fontweight='bold', pad=15)
 ax.grid(visible=True, which='major', linestyle='--', linewidth=0.7, alpha=0.7)
 
@@ -124,8 +118,9 @@ data['ebitint'] = data['ebit'] / data['xint']
 data['cash'] = data['che'] / data['at']
 data['profitability'] = data['oibdp'] / data['at']
 
+print(data.isnull().sum())  # Count of NaN values (first one does not display)
+print(data.isnull().sum()) 
 
-print(data.isnull().sum())  # Count of NaN values
 
 # 1.2) Apply winsorization within each fiscal year for all financial ratios
 
@@ -137,99 +132,65 @@ financial_ratios = [
 ]
 
 for ratio in financial_ratios:
-    data[ratio] = data.groupby('gvkey')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
+    data[f'{ratio}_winsorized'] = data.groupby('gvkey')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
 
-# Remove rows with infinite values
+# Replace rows with infinite values with NaN
 data.replace([np.inf, -np.inf], np.nan, inplace=True)
-data.dropna(inplace=True)
 
-summary_stats12 = data[financial_ratios].agg(['mean', 'median', 'min', 'max', 'std', 'count']).T
+# Generate summary statistics for the winsorized ratios
+winsorized_columns = [f'{ratio}_winsorized' for ratio in financial_ratios]
+summary_stats12 = data[winsorized_columns].agg(['mean', 'median', 'min', 'max', 'std', 'count']).T
 summary_stats12.columns = ['Mean', 'Median', 'Min', 'Max', 'StdDev', 'Non-Missing Count']
-
-# Display the summary table
-print(summary_stats12)
 
 # Save the table as a CSV
 summary_stats12.to_csv('Winsorized_Statistics12.csv')
 
 
 # 1.3) Split the firms into 4 quartiles based on the market value of equity
-data['market_value_quartile'] = data.groupby('fyear')['marketvalueofequity'].transform(
-    lambda x: pd.qcut(x, 4, labels=False)
+# Assign quartiles to market value of equity within each year
+data['market_value_quartile_winsorized'] = data.groupby('fyear')['marketvalueofequity_winsorized'].transform(
+    lambda x: pd.qcut(x, 4, labels=[1, 2, 3, 4])  # Assign quartile labels 1-4
 )
 
-# Filter for smallest (quartile 0) and largest (quartile 3) groups
-filtered_data = data[data['market_value_quartile'].isin([0, 3])]
+# Filter for smallest (quartile 1) and largest (quartile 4) groups
+filtered_data = data[data['market_value_quartile_winsorized'].isin([1, 4])]
 
-# Calculate summary statistics for the selected quartiles
-quartile_stats13 = filtered_data.groupby(['fyear', 'market_value_quartile'])[financial_ratios].agg(['mean', 'median', 'std'])
-
-# Display the summary table
-print(quartile_stats13)
+# Calculate summary statistics (mean, median, std) for each variable in financial_ratios
+summary_stats13 = filtered_data.groupby('market_value_quartile_winsorized')[financial_ratios].agg(['mean', 'median', 'std'])
 
 # Save the table as a CSV
-quartile_stats13.to_csv('Quartile_Statistics13.csv')
+summary_stats13.to_csv('Quartile_Statistics13.csv')
+
 
 ### 1.4) Financial and non-financial firms ###
+# Ensure 'sic' is treated as a string, extract the first two digits, and convert to integer
+data['sic_prefix'] = data['sic'].astype(str).str[:2].astype(int)
+
 # Create an indicator for financial firms (SIC code 60-67 inclusive)
-data['is_financial'] = data['sic'].astype(str).str[:2].astype(int).between(60, 67)
+data['is_financial'] = data['sic_prefix'].between(60, 67)
 
 # Create an indicator for utility/regulated firms (SIC code 40-49 inclusive)
-data['is_utility'] = data['sic'].astype(str).str[:2].astype(int).between(40, 49)
+data['is_utility'] = data['sic_prefix'].between(40, 49)
 
-# Check the unique values for the indicators
-print(data[['is_financial', 'is_utility']].sum())
-
-# Calculate the average number of financial and non-financial firms per fiscal year
-financial_counts = data.groupby(['fyear', 'is_financial'])['gvkey'].nunique().reset_index()
-financial_counts = financial_counts.pivot(index='fyear', columns='is_financial', values='gvkey')
-financial_counts.columns = ['Non-Financial Firms', 'Financial Firms']
-financial_counts.fillna(0, inplace=True)
-
-# Calculate the average number of firms across years
-avg_financial_counts = financial_counts.mean()
-print("Average number of firms per fiscal year:")
-print(avg_financial_counts)
-
-# Calculate the number of utility firms per fiscal year
-utility_counts14 = data.groupby('fyear')['is_utility'].sum()
-
-# Display the summary table
-print(utility_counts14)
-
-# Save the table as a CSV
-utility_counts14.to_csv('Industries_Statistics14.csv')
-
-# Plot the data
-fig, ax = plt.subplots(figsize=(12, 6))  # Set figure size
-financial_counts.plot(
-    kind='bar', 
-    ax=ax, 
-    color=['darkblue', '#ff7f0e'],  # Custom colors for financial and non-financial firms
-    edgecolor='black',  # Add edges to bars for better distinction
-    width=0.8  # Adjust bar width
+# Calculate the number of unique financial firms per fiscal year
+financial_firms_per_year = (
+    data[data['is_financial']].groupby('fyear')['gvkey'].nunique()
 )
 
-# Title and labels
-ax.set_title('Number of Financial vs Non-Financial Firms Over Time', fontsize=16, fontweight='bold', pad=15)
-ax.set_xlabel('Fiscal Year', fontsize=14, fontweight='bold', labelpad=10)
-ax.set_ylabel('Number of Firms', fontsize=14, fontweight='bold',  labelpad=10)
+# Calculate the number of unique non-financial firms per fiscal year
+non_financial_firms_per_year = (
+    data[~data['is_financial']].groupby('fyear')['gvkey'].nunique()
+)
 
-# Legend
-ax.legend(title='Firm Type', fontsize=12, title_fontsize=12)
+# Combine the results into a DataFrame for each fiscal year
+firms_per_year = pd.DataFrame({
+    'Financial Firms': financial_firms_per_year,
+    'Non-Financial Firms': non_financial_firms_per_year
+}).reset_index()
 
-# Customize ticks
-ax.tick_params(axis='both', which='major', labelsize=12)
-ax.set_xticks(range(len(financial_counts.index)))  # Ensure proper alignment of ticks
-ax.set_xticklabels(financial_counts.index.astype(int), rotation=45, ha='right')  # Rotate labels for readability
+# Save the results to a CSV file
+firms_per_year.to_csv('avg_firms_per_year.csv14', index=False)
 
-# Gridlines
-ax.grid(visible=True, axis='y', linestyle='--', linewidth=0.7, alpha=0.7)
-
-# Tight layout for spacing and save the plot
-plt.tight_layout()
-plt.savefig('Number_of_Financial_vs_Non-Financial_Firms_Over_Time14.png')
-plt.show()
 
 ### 1.5) Using the book leverages and market leverage, create descritive statistics for the subset of firms ###
 # Define subsets
@@ -249,7 +210,7 @@ def calculate_statistics(df, columns):
     return df[columns].agg(['mean', 'median', 'std', 'count']).T
 
 # List of leverage columns
-leverage_columns = ['bookleverage1', 'bookleverage2', 'marketleverage']
+leverage_columns = ['bookleverage1_winsorized', 'bookleverage2_winsorized', 'marketleverage_winsorized']
 
 # Calculate statistics for each group
 financial_stats = calculate_statistics(financial_firms, leverage_columns)
@@ -274,6 +235,8 @@ print(summary_table15)
 # Save the table as a CSV
 summary_table15.to_csv('Leverage_Statistics15.csv')
 
+# drop rows with missing values 
+data = data.dropna()
 
 
 ### 2) Exploratory data analysis ### 
