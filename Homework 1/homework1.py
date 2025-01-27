@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import warnings
 from pandas.plotting import scatter_matrix
+import seaborn as sns
 
 
 ### 1) Understanding data issues ###
@@ -118,21 +119,18 @@ data['ebitint'] = data['ebit'] / data['xint']
 data['cash'] = data['che'] / data['at']
 data['profitability'] = data['oibdp'] / data['at']
 
-print(data.isnull().sum())  # Count of NaN values (first one does not display)
-print(data.isnull().sum()) 
-
 
 # 1.2) Apply winsorization within each fiscal year for all financial ratios
 
 # Winsorize financial ratios (1st and 99th percentile) in each fiscal year
 financial_ratios = [
-    'bookleverage1', 'bookleverage2', 'marketleverage', 'markettobook', 'assetgrowth',
+    'bookleverage1', 'bookleverage2', 'marketvalueofequity', 'marketleverage', 'markettobook', 'assetgrowth',
     'assettangibility', 'roe', 'profitmargin', 'capexratio', 'dividendyield',
     'dividendpayout', 'totalpayout', 'ebitint', 'cash', 'profitability'
 ]
 
 for ratio in financial_ratios:
-    data[f'{ratio}_winsorized'] = data.groupby('gvkey')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
+    data[f'{ratio}_winsorized'] = data.groupby('fyear')[ratio].transform(lambda x: winsorize(x, lower=0.01, upper=0.99))
 
 # Replace rows with infinite values with NaN
 data.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -248,7 +246,9 @@ data = data.dropna()
 non_financial_non_utility_firms = data[~data['is_financial'] & ~data['is_utility']]
 
 # Select the six financial ratios
-financial_ratios = ['bookleverage1', 'ebitint', 'cash', 'profitability', 'totalpayout', 'markettobook']
+financial_ratios = ['bookleverage1_winsorized', 'ebitint_winsorized', 'cash_winsorized',
+                     'profitability_winsorized', 'totalpayout_winsorized', 'markettobook_winsorized'
+]
 
 # Subset the data for the selected financial ratios
 selected_data = non_financial_non_utility_firms[financial_ratios]
@@ -279,171 +279,160 @@ plt.savefig('Histogram-scatter21a.png')
 
 
 # 2.1) b) Time-series graph of average and aggregate values of the six financial ratios
-# Subset the data for non-financial and non-utility firms
-non_financial_non_utility_firms = data[~data['is_financial'] & ~data['is_utility']]
+# Function to calculate firm-level value
+def calculate_firm_value(row):
+    """Calculate the firm's value (total assets) for weighting"""
+    return row['at']
 
-# Define financial ratios and their components (numerator/denominator for aggregate calculation)
-ratios_components = {
-    'bookleverage1': ('dlc + dltt', 'at'),  # Book leverage 1: (DLC + DLTT) / AT
-    'ebitint': ('ebit', 'xint'),           # EBIT interest coverage: EBIT / XINT
-    'cash': ('che', 'at'),                 # Cash: CHE / AT
-    'profitability': ('oibdp', 'at'),      # Profitability: OIBDP / AT
-    'totalpayout': ('dv + prstkc', 'ni'),  # Total payout: (DV + PRSTKC) / NI
-    'markettobook': ('prcc_f * csho + dltt + dlc + pstkl - txditc', 'at')  # Market-to-book
-}
+# Calculate aggregates and averages
+results = {}
+for ratio in financial_ratios:
+    # Group by fiscal year
+    yearly_data = non_financial_non_utility_firms.groupby('fyear')
+    
+    # Calculate simple average (equal-weighted)
+    average = yearly_data[ratio].mean()
+    
+    # Calculate value-weighted average (weighted by firm size)
+    weights = non_financial_non_utility_firms.groupby('fyear').apply(
+        lambda x: x.apply(calculate_firm_value, axis=1) / x.apply(calculate_firm_value, axis=1).sum()
+    )
+    value_weighted_avg = (non_financial_non_utility_firms[ratio] * weights.values).groupby(non_financial_non_utility_firms['fyear']).sum()
+    
+    results[ratio] = {
+        'average': average,
+        'value_weighted': value_weighted_avg
+    }
 
-# Initialize a dictionary to store aggregated data
-aggregated_results = {}
+# Create plots
+fig, axes = plt.subplots(len(financial_ratios), 1, figsize=(12, 5 * len(financial_ratios)), sharex=True)
 
-# Create a figure with subplots (dynamic size based on the number of ratios)
-num_ratios = len(ratios_components)
-fig, axes = plt.subplots(num_ratios, 1, figsize=(10, 5 * num_ratios))  # One row per ratio
-
-# If there's only one ratio, ensure axes is iterable
-if num_ratios == 1:
+# Ensure axes is always iterable
+if len(financial_ratios) == 1:
     axes = [axes]
 
-# Make a deep copy of the DataFrame to avoid the SettingWithCopyWarning
-df = non_financial_non_utility_firms.copy()
 
-# Loop through each ratio and calculate average and aggregate values over time
-for idx, (ratio, (numerator, denominator)) in enumerate(ratios_components.items()):
-    # Calculate numerator and denominator using eval
-    df.loc[:, numerator] = df.eval(numerator)
-    df.loc[:, denominator] = df.eval(denominator)
+# Plot averages and value-weighted averages for each financial ratio
+for i, ratio in enumerate(financial_ratios):
+    ax = axes[i]
+    
+    # Plot equal-weighted average
+    ax.plot(results[ratio]['average'].index, 
+            results[ratio]['average'].values, 
+            label='Equal-weighted Average', 
+            color='blue', 
+            marker='o')
+    
+    # Plot value-weighted average
+    ax.plot(results[ratio]['value_weighted'].index, 
+            results[ratio]['value_weighted'].values, 
+            label='Value-weighted Average', 
+            color='orange', 
+            linestyle='--', 
+            marker='x')
+    
+    # Customize plot
+    ax.set_title(f"Time-Series of {ratio}", fontsize=14, fontweight='bold')
+    ax.set_ylabel('Values', fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(fontsize=10)
 
-    # Calculate average values (mean)
-    average_values = df.groupby('fyear')[ratio].mean()
-
-    # Calculate aggregate values (sum of numerator / sum of denominator)
-    aggregate_values = (
-        df.groupby('fyear')[numerator].sum() /
-        df.groupby('fyear')[denominator].sum()
-    )
-
-    # Plot the data
-    ax = axes[idx]
-    ax.plot(
-        average_values.index,
-        average_values,
-        label='Average',
-        color='darkblue',
-        linewidth=2
-    )
-    ax.plot(
-        aggregate_values.index,
-        aggregate_values,
-        label='Aggregate',
-        color='darkorange',
-        linewidth=2,
-        linestyle='--'
-    )
-    ax.set_title(f'Time Series for {ratio}', fontsize=14, fontweight='bold')
-    ax.set_xlabel('Fiscal Year', fontsize=12)
-    ax.set_ylabel(ratio, fontsize=12)
-    ax.legend(fontsize=10, title='Legend', title_fontsize=10)
-    ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.tick_params(axis='x', rotation=45)  # Rotate x-axis labels
-
-# Adjust layout to prevent overlap
+# Final layout adjustments
+axes[-1].set_xlabel('Fiscal Year', fontsize=12)
 plt.tight_layout()
 
-# Save the entire figure as one image
-plt.savefig('Timeseries_graphs_combined21b.png')
+# Save the plot
+plt.savefig('Time_Series_Financial_Ratios_21b.png')
 
 
-# 2.2) Correlation matrix
-# Calculate the correlation matrix for the selected financial ratios
-correlation_matrix22a = selected_data.corr()
-# Save the table as a CSV
-correlation_matrix22a.to_csv('Correlation_Matrix22a.csv')
+# 2.2) a) Correlation matrix
+# List of winsorized financial ratios
 
-# Center each variable by removing firm-specific mean
-selected_data_centered = selected_data.sub(selected_data.mean(axis=0))
+# Original Correlation Matrix
+correlation_matrix = non_financial_non_utility_firms[financial_ratios].corr()
 
-# Calculate correlation matrix
-correlation_matrix_centered = selected_data_centered.corr()
-correlation_matrix_centered.to_csv('Correlation_Matrix_Centered22b.csv')
+# Create heatmap for original correlations
+plt.figure(figsize=(10, 8))
+sns.heatmap(correlation_matrix, 
+            annot=True,  # Show correlation values
+            cmap='RdBu',  # Red-Blue colormap
+            center=0,     # Center the colormap at 0
+            vmin=-1,     # Minimum correlation value
+            vmax=1,      # Maximum correlation value
+            fmt='.2f')   # Format numbers to 2 decimal places
+
+plt.title('Correlation Matrix of Original Financial Ratios', fontsize=14, pad=20, fontweight='bold')
+plt.tight_layout()
+plt.savefig('Original_Correlation_Matrix22.png')
+plt.close()
+
+# Demeaned Variables
+# Calculate firm-specific means and subtract them
+demeaned_data = pd.DataFrame()
+for ratio in financial_ratios:
+    firm_means = non_financial_non_utility_firms.groupby('gvkey')[ratio].transform('mean')
+    demeaned_data[f'{ratio}_demeaned'] = non_financial_non_utility_firms[ratio] - firm_means
+
+# Calculate correlation matrix for demeaned variables
+demeaned_correlation_matrix = demeaned_data.corr()
+
+# Create heatmap for demeaned correlations
+plt.figure(figsize=(10, 8))
+sns.heatmap(demeaned_correlation_matrix, 
+            annot=True,  # Show correlation values
+            cmap='RdBu',  # Red-Blue colormap
+            center=0,     # Center the colormap at 0
+            vmin=-1,     # Minimum correlation value
+            vmax=1,      # Maximum correlation value
+            fmt='.2f')   # Format numbers to 2 decimal places
+
+plt.title('Correlation Matrix of Demeaned Financial Ratios', fontsize=14, pad=20, fontweight='bold')
+plt.tight_layout()
+plt.savefig('Demeaned_Correlation_Matrix22.png')
+plt.close()
+
+# Save correlation matrices to CSV files
+correlation_matrix.to_csv('Original_Correlation_Matrix22.csv')
+demeaned_correlation_matrix.to_csv('Demeaned_Correlation_Matrix22.csv')
 
 
 
-# 2.3) a) Estimate the model using OLS, y_it=a+β_1x_it+ε_it
-# Load data (ensure 'bookleverage1' and 'profitability' are available columns)
-data = non_financial_non_utility_firms  # Subset as before
+# 2.3) 
+# a) Original OLS
+y = non_financial_non_utility_firms['bookleverage1_winsorized']  # Use winsorized variables
+x = non_financial_non_utility_firms['profitability_winsorized']
+x = sm.add_constant(x)
 
-# Define dependent and independent variables for Model 1
-y = data['bookleverage1']  # Book leverage
-x = data['profitability']  # Profitability
-x = sm.add_constant(x)  # Add a constant term for the intercept
-
-# Model 1: OLS estimation
 model1 = sm.OLS(y, x).fit()
+model1_robust = sm.OLS(y, x).fit(cov_type='HC1')
 
-# Model 1 with robust standard errors
-model1_robust = sm.OLS(y, x).fit(cov_type='HC1')  # Heteroskedasticity-robust errors
+model1.summary2().tables[1].to_csv("ols_results23a.csv")
+model1_robust.summary2().tables[1].to_csv("ols_results_23a_robust.csv")
 
-# Print results for Model 1
-# Extract the regression summary table as a DataFrame
-ols_results = model1.summary2().tables[1]
+# b) Demeaned OLS
+y_demeaned = y - non_financial_non_utility_firms.groupby('gvkey')['bookleverage1_winsorized'].transform('mean')
+x_demeaned = x['profitability_winsorized'] - non_financial_non_utility_firms.groupby('gvkey')['profitability_winsorized'].transform('mean')
+x_demeaned = sm.add_constant(x_demeaned)
 
-# Save the OLS results to a CSV file
-ols_results.to_csv("ols_results23a.csv", index=True)
-
-# Extract the regression summary table as a DataFrame
-ols_results = model1_robust.summary2().tables[1]
-# Save the OLS results to a CSV file
-ols_results.to_csv("ols_results_23a_robust.csv", index=True)
-
-
-
-# 2.3) b) Estimate the model using OLS, y_it=a+β_1x_it+ε_it with de-meaned variables
-data['demeaned_y'] = data['bookleverage1'] - data.groupby('gvkey')['bookleverage1'].transform('mean')
-data['demeaned_x'] = data['profitability'] - data.groupby('gvkey')['profitability'].transform('mean')
-
-y_demeaned = data['demeaned_y']
-x_demeaned = sm.add_constant(data['demeaned_x'])
-
-# Model 2: OLS estimation with de-meaned variables
 model2 = sm.OLS(y_demeaned, x_demeaned).fit()
+model2_robust = sm.OLS(y_demeaned, x_demeaned).fit(cov_type='HC1')
 
-# Model 2 with robust standard errors
-model2_robust = sm.OLS(y_demeaned, x_demeaned).fit(cov_type='HC1')  # Heteroskedasticity-robust errors
+model2.summary2().tables[1].to_csv("ols_results_23b.csv")
+model2_robust.summary2().tables[1].to_csv("ols_results_23b_robust.csv")
 
-# Extract the regression summary table as a DataFrame
-ols_results = model2.summary2().tables[1]
-# Save the OLS results to a CSV file
-ols_results.to_csv("ols_results_23b.csv", index=True)
+# c) First-difference OLS
+non_financial_non_utility_firms = non_financial_non_utility_firms.sort_values(['gvkey', 'fyear'])
+y_diff = non_financial_non_utility_firms.groupby('gvkey')['bookleverage1_winsorized'].diff()
+x_diff = non_financial_non_utility_firms.groupby('gvkey')['profitability_winsorized'].diff()
+x_diff = sm.add_constant(x_diff)
 
-# Extract the regression summary table as a DataFrame
-ols_results = model2_robust.summary2().tables[1]
-# Save the OLS results to a CSV file
-ols_results.to_csv("ols_results_23b_robust.csv", index=True)
+diff_model = sm.OLS(y_diff.dropna(), x_diff.dropna()).fit()
+diff_model_robust = sm.OLS(y_diff.dropna(), x_diff.dropna()).fit(cov_type='HC1')
 
-
-# 2.3) c) Estimate the model using OLS, y_it-y_it-1=a+β_1(x_it-x_it-1)+ε_it
-# Calculate first differences
-data['Δy'] = data['bookleverage1'] - data['bookleverage1'].shift(1)
-data['Δx'] = data['profitability'] - data['profitability'].shift(1)
-
-# Drop missing values due to lagged computation
-diff_data = data.dropna(subset=['Δy', 'Δx'])
-
-# Define dependent and independent variables
-y_diff = diff_data['Δy']
-x_diff = sm.add_constant(diff_data['Δx'])
-
-# OLS regression on first-difference model
-diff_model = sm.OLS(y_diff, x_diff).fit()
-
-# OLS regression on first-difference model (robust standard errors)
-diff_model_robust = sm.OLS(y_diff, x_diff).fit(cov_type='HC1')
-
-# Save results
 diff_model.summary2().tables[1].to_csv("ols_diff23c.csv")
 diff_model_robust.summary2().tables[1].to_csv("ols_diff23c_robust.csv")
 
-
-# 2.3) d) Perform firm-by-firm regression for each group
+# d) Perform firm-by-firm regression for each group
 # Initialize lists to store results
 firm_results = []
 firm_results_robust = []
@@ -451,9 +440,9 @@ firm_results_robust = []
 # Perform firm-by-firm regression for each group if the firm has at least 10 non-missing observations
 for gvkey, group in data.groupby('gvkey'):
     # Check for at least 10 non-missing observations
-    if group['bookleverage1'].notnull().sum() >= 10:
+    if group['bookleverage1_winsorized'].notnull().sum() >= 10:
         y_firm = group['bookleverage1'].dropna()
-        x_firm = sm.add_constant(group['profitability'].loc[y_firm.index])  # Align x and y indices
+        x_firm = sm.add_constant(group['profitability_winsorized'].loc[y_firm.index])  # Align x and y indices
 
         # Perform regular OLS regression
         try:
@@ -500,22 +489,20 @@ plt.savefig('Coefficients_with_Robust_Standard_Errors23d.png')
 plt.close()
 
 
-# 2.4) e) Grouping firms by market value
-# Divide firms into quartiles based on market value
-data['market_value_quartile'] = pd.qcut(data['marketvalueofequity'], 4, labels=[1, 2, 3, 4])
+# e) Grouping firms by market value
 
 group_results = []
 group_results_robust = []
 
 # Perform firm-by-firm regression for each group
 for quartile in range(1, 5):
-    quartile_data = data[data['market_value_quartile'] == quartile]
+    quartile_data = data[data['market_value_quartile_winsorized'] == quartile]
     quartile_firm_results = []
     
     for gvkey, group in quartile_data.groupby('gvkey'):
         if len(group) >= 10:
-            y_firm = group['bookleverage1']
-            x_firm = sm.add_constant(group['profitability'])
+            y_firm = group['bookleverage1_winsorized']
+            x_firm = sm.add_constant(group['profitability_winsorized'])
             
             try:
                 firm_model = sm.OLS(y_firm, x_firm).fit()
@@ -536,13 +523,13 @@ group_results_df.to_csv("quartile_beta23e.csv", index=False)
 
 # Perform firm-by-firm regression for each group with robust standard errors
 for quartile in range(1, 5):
-    quartile_data = data[data['market_value_quartile'] == quartile]
+    quartile_data = data[data['market_value_quartile_winsorized'] == quartile]
     quartile_firm_results = []
     
     for gvkey, group in quartile_data.groupby('gvkey'):
         if len(group) >= 10:
-            y_firm = group['bookleverage1']
-            x_firm = sm.add_constant(group['profitability'])
+            y_firm = group['bookleverage1_winsorized']
+            x_firm = sm.add_constant(group['profitability_winsorized'])
             
             try:
                 firm_model = sm.OLS(y_firm, x_firm).fit(cov_type='HC1')  # Robust standard errors
